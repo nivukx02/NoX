@@ -1,0 +1,2 @@
+#include "scene/depth_fusion.h"
+namespace nox::native::scene{Vec3 DepthFusion::fuse(const Vec3&a,double ca,const Vec3&b,double cb)noexcept{double s=ca+cb;if(s<=0)return a;return{(a.x*ca+b.x*cb)/s,(a.y*ca+b.y*cb)/s,(a.z*ca+b.z*cb)/s};}}

@@ -1,0 +1,2 @@
+#include "capture/capture_trigger.h"
+namespace nox::native::capture { TriggerState CaptureTrigger::evaluate(bool armed,double c,std::uint64_t t,double th)const noexcept{return{armed,armed&&c>=th, t};} }

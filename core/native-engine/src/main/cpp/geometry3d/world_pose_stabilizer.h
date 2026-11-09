@@ -1,0 +1,2 @@
+#pragma once
+namespace nox::native::geometry { struct Pose{double x{0},y{0},z{0};}; class WorldPoseStabilizer final{public:Pose update(const Pose&previous,const Pose&measured,double confidence)const noexcept;};}

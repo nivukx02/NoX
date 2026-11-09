@@ -1,0 +1,41 @@
+name: No Source Line Deletions
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  no-line-deletions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify the preservation policy itself
+        run: bash scripts/ci/test_verify_no_source_line_deletions.sh
+
+      - name: Enforce additive upgrade policy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            if [[ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]]; then
+              base="$(git rev-list --max-parents=0 HEAD)"
+            else
+              base="${{ github.event.before }}"
+            fi
+            head="${{ github.sha }}"
+          fi
+
+          bash scripts/ci/verify_no_source_line_deletions.sh "${base}" "${head}"

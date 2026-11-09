@@ -1,0 +1,181 @@
+name: Extract NoX archive
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'NoX-main.zip'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    if: github.actor == 'nivash01'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Test source archive validation
+        run: python3 scripts/ci/test_validate_source_archive.py
+
+      - name: Detect archive
+        id: archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f NoX-main.zip ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "NoX-main.zip is not present on this commit; archive extraction is not required."
+          fi
+
+      - name: Validate and extract archive
+        if: steps.archive.outputs.present == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          archive="NoX-main.zip"
+
+          python3 scripts/ci/validate_source_archive.py "$archive"
+          rm -rf /tmp/nox-extract
+          mkdir -p /tmp/nox-extract
+          unzip -q "$archive" -d /tmp/nox-extract
+
+          echo "Locating Gradle project root..."
+          mapfile -t settings_files < <(
+            find /tmp/nox-extract \
+              -type f \
+              -name 'settings.gradle.kts' \
+              -not -path '*/build/*' \
+              -print
+          )
+          test "${#settings_files[@]}" -eq 1
+          settings_file="${settings_files[0]}"
+          source_dir="$(dirname "$settings_file")"
+
+          test -f "$source_dir/settings.gradle.kts"
+          test -f "$source_dir/build.gradle.kts"
+          test -f "$source_dir/app/build.gradle.kts"
+
+          echo "Resolved project root: $source_dir"
+
+          # Overlay archive contents without clearing files that are absent from the ZIP.
+          # Existing .github workflows are intentionally preserved below.
+          while IFS= read -r -d '' entry; do
+            name="$(basename "$entry")"
+            if [[ -d "$entry" ]]; then
+              mkdir -p "./$name"
+              cp -a "$entry/." "./$name/"
+            else
+              cp -a "$entry" "./$name"
+            fi
+          done < <(
+            find "$source_dir" \
+              -mindepth 1 \
+              -maxdepth 1 \
+              ! -name ".git" \
+              ! -name ".github" \
+              -print0
+          )
+          # Keep the uploaded archive. The repository policy disallows tracked-file deletion.
+
+      - name: Verify extracted source
+        if: steps.archive.outputs.present == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f app/build.gradle.kts
+          test -f NoX-main.zip
+
+          root_count="$(
+            find . -maxdepth 1 -type f -name 'settings.gradle.kts' -print |
+              wc -l
+          )"
+          test "$root_count" -eq 1
+
+          test -f .github/workflows/extract-archive.yml
+          test -f .github/workflows/full-build.yml
+          test -f .github/workflows/no-deleted-files.yml
+          test -f .github/workflows/no-source-line-deletions.yml
+          test -f .github/workflows/repository-integrity.yml
+          test -f .github/workflows/native-host-tests.yml
+          git diff --check
+
+      - name: Commit extracted source
+        if: steps.archive.outputs.present == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+
+          deleted_files="$(git diff --cached --name-status --diff-filter=D HEAD)"
+          if [[ -n "$deleted_files" ]]; then
+            echo "Refusing to commit an archive that deletes tracked files:" >&2
+            printf '%s\n' "$deleted_files" >&2
+            exit 1
+          fi
+
+          source_line_loss="$(
+            git diff --cached --unified=0 HEAD -- \
+              '*.kt' '*.kts' '*.java' '*.cpp' '*.cc' '*.cxx' \
+              '*.h' '*.hpp' '*.hh' '*.c' '*.m' '*.mm' \
+              '*.gradle' '*.gradle.kts' '*.cmake' 'CMakeLists.txt' \
+              '*.xml' '*.glsl' '*.md' '*.py' '*.sh' '*.yml' '*.yaml' \
+              '*.json' '*.toml' '*.properties' '*.pro' |
+              awk '
+                /^diff --git / {
+                  path = $0
+                  sub(/^diff --git a\//, "", path)
+                  split(path, parts, " b/")
+                  current = parts[2]
+                  next
+                }
+                /^--- / || /^\+\+\+ / { next }
+                /^-/ {
+                  line = substr($0, 2)
+                  if (line !~ /^[[:space:]]*$/) deleted[current]++
+                  next
+                }
+                /^\+/ {
+                  line = substr($0, 2)
+                  if (line !~ /^[[:space:]]*$/) added[current]++
+                  next
+                }
+                END {
+                  for (path in deleted) {
+                    if (deleted[path] > added[path]) {
+                      printf "%s: %d non-empty lines removed, %d added\n", \
+                        path, deleted[path], added[path]
+                    }
+                  }
+                }
+              '
+          )"
+          if [[ -n "$source_line_loss" ]]; then
+            echo "Refusing to commit an archive that shrinks tracked source/test/documentation files:" >&2
+            printf '%s\n' "$source_line_loss" | sed -n '1,200p' >&2
+            exit 1
+          fi
+
+          if git diff --cached --quiet; then
+            echo "No extraction changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Extract NoX source archive"
+          git push origin HEAD:main

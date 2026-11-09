@@ -1,0 +1,50 @@
+name: repository-integrity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  accidental-deletion-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect any accidental source or documentation deletion
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            base="HEAD^"
+          else
+            echo "No parent commit available; integrity guard skipped."
+            exit 0
+          fi
+
+          mapfile -t removed < <(
+            git diff --name-only --diff-filter=D "$base" HEAD --               '*.kt' '*.kts' '*.java' '*.cpp' '*.h' '*.hpp' '*.gradle' '*.xml' '*.glsl' '*.md' |
+              sort
+          )
+
+          count="${#removed[@]}"
+          echo "Production/test/documentation files removed in this commit: $count"
+
+          if (( count == 0 )); then
+            echo "No tracked production/test/documentation files were removed."
+            exit 0
+          fi
+
+          echo "::error::Deletion detected: $count production/test/documentation files removed."
+          printf '%s\n' "${removed[@]}" | sed -n '1,200p'
+          echo
+          echo "No source/test/documentation deletion is permitted by the NoX upgrade policy."
+          exit 1

@@ -1,0 +1,68 @@
+name: NoX Native Host Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nox-native-host-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-host-tests:
+    name: CMake build and native regression tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Report toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --version
+          c++ --version
+          ninja --version
+
+      - name: Configure native engine and enable host tests
+        run: |
+          cmake \
+            -S core/native-engine \
+            -B build/nox-native-host \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DNOX_NATIVE_HOST_TESTS=ON
+
+      - name: Compile the complete native engine and host test suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build build/nox-native-host --parallel 2
+
+      - name: Execute native CTest suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          ctest \
+            --test-dir build/nox-native-host \
+            --output-on-failure \
+            --parallel 2 \
+            --timeout 90
+
+      - name: Upload native diagnostics on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nox-native-host-diagnostics-${{ github.run_id }}
+          path: |
+            build/nox-native-host/Testing/Temporary/LastTest.log
+            build/nox-native-host/Testing/Temporary/LastTestsFailed.log
+          if-no-files-found: warn
+          retention-days: 7

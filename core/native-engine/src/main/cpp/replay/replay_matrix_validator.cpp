@@ -1,0 +1,2 @@
+#include "replay/replay_matrix_validator.h"
+namespace nox::native::replay { MatrixResult ReplayMatrixValidator::run(const std::vector<MatrixCase>&cases)const{MatrixResult o;for(auto&c:cases){auto r=ReplayRunner{}.run(c.fixture);if(r.valid&&r.synchronizationConfidence>=c.minSync&&r.calibrationConfidence>=c.minCalibration&&r.recoveryConfidence>=c.minRecovery)++o.passed;else{++o.failed;o.failures.push_back(c.name);}}return o;} }

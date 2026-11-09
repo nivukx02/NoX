@@ -1,0 +1,40 @@
+name: No Deleted Files
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  no-deletions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tracked-file integrity
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            bash scripts/ci/verify_no_deleted_files.sh \
+              "${{ github.event.pull_request.base.sha }}" \
+              "${{ github.event.pull_request.head.sha }}"
+          else
+            if [[ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]]; then
+              base="$(git rev-list --max-parents=0 HEAD)"
+            else
+              base="${{ github.event.before }}"
+            fi
+            bash scripts/ci/verify_no_deleted_files.sh "${base}" "${{ github.sha }}"
+          fi
+
+          echo "Verifying the complete repository against the NoX baseline."
+          bash scripts/ci/verify_no_deleted_files.sh \
+            "0d2f7276fc00d9b5f7b7c5dca029a3961ad96254" \
+            "${{ github.sha }}"

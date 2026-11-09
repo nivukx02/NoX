@@ -1,0 +1,4 @@
+#include "runtime/work_scheduler.h"
+#include "runtime/queue_pressure.h"
+#include "runtime/thermal_policy.h"
+namespace nox::native::runtime { WorkDecision WorkScheduler::decide(Priority p,std::uint32_t d,std::uint32_t c,int t,double m) const noexcept { const auto q=QueuePressureModel{}.evaluate(d,c); const auto th=ThermalPolicy{}.evaluate(t,m); if(p==Priority::Critical) return {true,p,th.workloadScale,false}; if(q.shedding&&p==Priority::Low) return {false,p,th.workloadScale,true}; if(th.constrained&&p==Priority::Low) return {false,p,th.workloadScale,true}; return {true,p,th.workloadScale,false}; } }

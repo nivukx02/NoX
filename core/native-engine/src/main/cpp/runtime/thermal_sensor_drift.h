@@ -1,0 +1,2 @@
+#pragma once
+namespace nox::native::runtime { struct ThermalDrift{double correctedTemperature{0},drift{0},confidence{0};}; class ThermalSensorDrift final{public:ThermalDrift correct(double measured,double reference,double ageSeconds)const noexcept;};}

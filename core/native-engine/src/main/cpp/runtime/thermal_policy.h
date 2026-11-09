@@ -1,0 +1,2 @@
+#pragma once
+namespace nox::native::runtime { struct ThermalPolicyResult { double workloadScale{1}; bool constrained{false}; }; class ThermalPolicy final { public: ThermalPolicyResult evaluate(int thermalStatus,double memoryPressure) const noexcept; }; }

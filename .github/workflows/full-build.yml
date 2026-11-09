@@ -1,0 +1,242 @@
+name: NoX Unit Test Gate
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: nox-full-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  runner-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify runner execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner=${RUNNER_OS}"
+          echo "arch=${RUNNER_ARCH}"
+          echo "workspace=${GITHUB_WORKSPACE}"
+          uname -a
+          pwd
+          test -d "${GITHUB_WORKSPACE}"
+          echo "basic-runner-smoke=PASS"
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Gradle bootstrap contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n gradlew
+          python3 scripts/ci/test_gradle_bootstrap_contract.py
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-provider: basic
+
+      - name: Capture CI preflight diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-diagnostics
+          {
+            echo "run=${GITHUB_RUN_NUMBER}"
+            echo "sha=${GITHUB_SHA}"
+            echo "runner=${RUNNER_OS}"
+            echo "java="
+            java -version 2>&1
+            echo "gradle="
+            gradle --version
+            echo "android_home=${ANDROID_HOME:-unset}"
+            echo "curl="
+            curl --version | head -1
+          } > ci-diagnostics/preflight.txt
+
+      - name: Provision MediaPipe models
+        shell: bash
+        run: |
+          set -euo pipefail
+          model_dir="core/ai/src/main/assets"
+          mkdir -p "$model_dir"
+
+          download_verify() {
+            local url="$1"
+            local target="$2"
+            local expected_sha256="$3"
+            local temp_file="$target.download"
+
+            rm -f "$temp_file"
+            curl --fail --show-error --location               --retry 5 --retry-delay 2 --retry-all-errors               --connect-timeout 20 --max-time 300               --output "$temp_file" "$url"
+            actual_sha256="$(sha256sum "$temp_file" | awk '{print $1}')"
+            test "$actual_sha256" = "$expected_sha256"
+            mv -f "$temp_file" "$target"
+            test -s "$target"
+          }
+
+          download_verify             "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"             "$model_dir/hand_landmarker.task"             "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1"
+
+          download_verify             "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task"             "$model_dir/pose_landmarker_full.task"             "4eaa5eb7a98365221087693fcc286334cf0858e2eb6e15b506aa4a7ecdcec4ad"
+
+          download_verify             "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/1/selfie_multiclass_256x256.tflite"             "$model_dir/selfie_multiclass_256x256.tflite"             "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0"
+
+      - name: Run targeted occlusion prediction unit test
+        run: gradle :core:ai:testDebugUnitTest --tests com.nivukx.nox.core.ai.MotionCaptureEngineQualityTest.predictsBriefOcclusionWithoutDestroyingTrackState --stacktrace --no-daemon --no-build-cache --rerun-tasks
+
+      - name: Run full Android build and unit test gate
+        run: |
+          set -euo pipefail
+          gradle clean --no-daemon --no-build-cache --rerun-tasks
+          gradle :app:assembleDebug --stacktrace --no-daemon --no-build-cache --rerun-tasks
+          gradle test --stacktrace --no-daemon --no-build-cache --rerun-tasks
+
+      - name: Upload unit-test diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nox-unit-test-diagnostics-${{ github.run_id }}
+          path: |
+            ci-diagnostics/preflight.txt
+            **/build/test-results/testDebugUnitTest/**
+            **/build/reports/tests/testDebugUnitTest/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  build-apk:
+    name: Build Debug APK (no unit tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Gradle bootstrap contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n gradlew
+          python3 scripts/ci/test_gradle_bootstrap_contract.py
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Capture CI preflight diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-diagnostics
+          {
+            echo "run=${GITHUB_RUN_NUMBER}"
+            echo "sha=${GITHUB_SHA}"
+            echo "runner=${RUNNER_OS}"
+            echo "java="
+            java -version 2>&1
+            echo "gradle="
+            gradle --version
+            echo "android_home=${ANDROID_HOME:-unset}"
+            echo "curl="
+            curl --version | head -1
+          } > ci-diagnostics/preflight.txt
+
+      - name: Provision MediaPipe models
+        shell: bash
+        run: |
+          set -euo pipefail
+          model_dir="core/ai/src/main/assets"
+          mkdir -p "$model_dir"
+
+          download_verify() {
+            local url="$1"
+            local target="$2"
+            local expected_sha256="$3"
+            local temp_file="$target.download"
+
+            rm -f "$temp_file"
+            curl --fail --show-error --location               --retry 5 --retry-delay 2 --retry-all-errors               --connect-timeout 20 --max-time 300               --output "$temp_file" "$url"
+            actual_sha256="$(sha256sum "$temp_file" | awk '{print $1}')"
+            test "$actual_sha256" = "$expected_sha256"
+            mv -f "$temp_file" "$target"
+            test -s "$target"
+          }
+
+          download_verify             "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"             "$model_dir/hand_landmarker.task"             "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1"
+
+          download_verify             "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task"             "$model_dir/pose_landmarker_full.task"             "4eaa5eb7a98365221087693fcc286334cf0858e2eb6e15b506aa4a7ecdcec4ad"
+
+          download_verify             "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/1/selfie_multiclass_256x256.tflite"             "$model_dir/selfie_multiclass_256x256.tflite"             "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0"
+
+      - name: Build app debug APK only
+        run: gradle :app:assembleDebug --stacktrace --no-daemon --no-build-cache --rerun-tasks
+
+      - name: Validate install-safe ABI APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_tools="$(find "${ANDROID_HOME}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/debug/*.apk)
+
+          test "${#apks[@]}" -eq 4
+
+          for apk in "${apks[@]}"; do
+            "${build_tools}/zipalign" -c -P 16 -v 4 "${apk}" >/dev/null
+            "${build_tools}/apksigner" verify --verbose "${apk}" >/dev/null
+
+            size="$(stat -c '%s' "${apk}")"
+            test "${size}" -lt 240000000
+            echo "Validated ${apk}: ${size} bytes"
+          done
+
+          arm64_apk="app/build/outputs/apk/debug/app-arm64-v8a-debug.apk"
+          test -f "${arm64_apk}"
+          cp "${arm64_apk}" "app/build/outputs/apk/debug/nox-installable-arm64-v8a-debug.apk"
+          sha256sum "${apks[@]}" > app/build/outputs/apk/debug/SHA256SUMS.txt
+
+      - name: Upload APK diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nox-apk-diagnostics-${{ github.run_id }}
+          path: ci-diagnostics/preflight.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload debug APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: nox-debug-apks-${{ github.run_id }}
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/debug/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14

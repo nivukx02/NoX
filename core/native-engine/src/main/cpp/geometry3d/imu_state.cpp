@@ -1,0 +1,3 @@
+#include "geometry3d/imu_state.h"
+#include <cmath>
+namespace nox::native::imu{Quaternion normalize(Quaternion q)noexcept{double n=std::sqrt(q.w*q.w+q.x*q.x+q.y*q.y+q.z*q.z);return n<1e-12?Quaternion{}:Quaternion{q.w/n,q.x/n,q.y/n,q.z/n};}Quaternion multiply(Quaternion a,Quaternion b)noexcept{return normalize({a.w*b.w-a.x*b.x-a.y*b.y-a.z*b.z,a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,a.w*b.y-a.x*b.z+a.y*b.w+a.z*b.x,a.w*b.z+a.x*b.y-a.y*b.x+a.z*b.w});}Quaternion fromAngularVelocity(double x,double y,double z,double dt)noexcept{double m=std::sqrt(x*x+y*y+z*z),h=.5*m*dt;if(m<1e-12)return{};double s=std::sin(h)/m;return normalize({std::cos(h),x*s,y*s,z*s});}}

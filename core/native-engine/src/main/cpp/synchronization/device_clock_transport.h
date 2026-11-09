@@ -1,0 +1,3 @@
+#pragma once
+#include <cstdint>
+namespace nox::native::sync { struct ClockPacket{std::uint64_t remote{0},local{0};}; struct ClockExchange{std::uint64_t localSend{0},remoteReceive{0},remoteSend{0},localReceive{0};}; struct ClockExchangeEstimate{std::int64_t offset{0};std::uint64_t roundTripNanos{0};std::uint64_t pathDelayNanos{0};double confidence{0.0};bool valid{false};}; class DeviceClockTransport final{public:std::int64_t estimateOffset(const ClockPacket&)const noexcept;ClockExchangeEstimate estimateExchange(const ClockExchange&)const noexcept;};}

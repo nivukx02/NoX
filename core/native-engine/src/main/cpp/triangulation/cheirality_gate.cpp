@@ -1,0 +1,2 @@
+#include "triangulation/cheirality_gate.h"
+namespace nox::native::triangulation{bool CheiralityGate::allInFront(const Vec3&p,const std::vector<RayObservation>&rays,double minDepth)noexcept{for(auto&r:rays){Vec3 q{p.x-r.origin.x,p.y-r.origin.y,p.z-r.origin.z};double d=q.x*r.direction.x+q.y*r.direction.y+q.z*r.direction.z;if(d<minDepth)return false;}return true;}}

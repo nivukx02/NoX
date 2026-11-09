@@ -1,0 +1,2 @@
+#pragma once
+namespace nox::native::eyes{struct EyelidState{double leftClosure{0};double rightClosure{0};double confidence{0};};class EyelidStateEstimator final{public:EyelidState estimate(double leftOpen,double rightOpen,double confidence)const noexcept;};}

@@ -1,0 +1,3 @@
+#include "export/schema_negotiator.h"
+#include <algorithm>
+namespace nox::native::exporting { NegotiatedSchema SchemaNegotiator::negotiate(const SchemaCapabilities&a,const SchemaCapabilities&b)const{NegotiatedSchema o;o.version=std::min(a.schemaVersion,b.schemaVersion);o.compatible=o.version>0&&a.abiVersion==b.abiVersion&&a.abiVersion==2;if(a.face&&b.face)o.supportedFeatures.push_back(1);if(a.eyes&&b.eyes)o.supportedFeatures.push_back(2);if(a.hands&&b.hands)o.supportedFeatures.push_back(3);if(a.scene&&b.scene)o.supportedFeatures.push_back(4);return o;} }

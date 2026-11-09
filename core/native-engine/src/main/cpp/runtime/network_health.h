@@ -1,0 +1,2 @@
+#pragma once
+namespace nox::native::runtime { struct NetworkHealth{double latencyMs{0},lossRatio{0},jitterMs{0},score{0};bool healthy{false};}; class NetworkHealthModel final{public:NetworkHealth evaluate(double latency,double loss,double jitter)const noexcept;};}

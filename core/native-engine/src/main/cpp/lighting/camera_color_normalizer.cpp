@@ -1,0 +1,2 @@
+#include "lighting/camera_color_normalizer.h"
+namespace nox::native::lighting { RGB CameraColorNormalizer::normalize(const RGB&x,const RGB&g)const noexcept{return{g.r>1e-6?x.r/g.r:x.r,g.g>1e-6?x.g/g.g:x.g,g.b>1e-6?x.b/g.b:x.b};} }

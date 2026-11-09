@@ -1,0 +1,2 @@
+#include "core/coordinate_frame_registry.h"
+namespace nox::native::core { void CoordinateFrameRegistry::registerFrame(const std::string&name,const std::string&parent){parents_[name]=parent;}bool CoordinateFrameRegistry::isCompatible(const std::string&a,const std::string&b)const{if(a==b)return true;std::string cur=a;for(int i=0;i<64;++i){auto it=parents_.find(cur);if(it==parents_.end())return false;cur=it->second;if(cur==b)return true;}return false;} }

@@ -1,0 +1,1 @@
+Main branch full-build verification trigger. This marker is intentionally retained as an audit trail for the successful CI gate.

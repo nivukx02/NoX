@@ -1,0 +1,3 @@
+#include "triangulation/reprojection_evaluator.h"
+#include <cmath>
+namespace nox::native::triangulation{ReprojectionResidual ReprojectionEvaluator::evaluate(const Vec3&p,const std::vector<RayObservation>&rays)const{ReprojectionResidual o;double s=0,w=0;for(auto&r:rays){double qx=p.x-r.origin.x,qy=p.y-r.origin.y,qz=p.z-r.origin.z;double d=std::sqrt(qx*qx+qy*qy+qz*qz);double c=d>1e-12?(qx*r.direction.x+qy*r.direction.y+qz*r.direction.z)/d:1;double e=std::sqrt(std::max(0.0,2.0-2.0*c));o.perView.push_back(e);s+=r.weight*e*e;w+=r.weight;}o.rms=w>0?std::sqrt(s/w):0;return o;}}
